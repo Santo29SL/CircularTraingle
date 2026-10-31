@@ -1,328 +1,474 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sketch2Shape AI</title>
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.1.1/model-viewer.min.js"></script>
-    <style>
-        :root {
-            --bg: #f9f9f9;
-            --text: #111;
-            --border: #000;
-            --accent: #eee;
-            --btn-bg: #000;
-            --btn-text: #fff;
-            --btn-hover: #333;
-        }
-        * {
-            box-sizing: border-box;
-            border-radius: 0 !important; /* Strictly sharp edges */
-            font-family: ui-sans-serif, system-ui, sans-serif;
-        }
-        body {
-            background-color: var(--bg);
-            color: var(--text);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .header {
-            width: 100%;
-            max-width: 1200px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid var(--border);
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        h1 { font-size: 1.5rem; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
-        .status { padding: 5px 10px; border: 1px solid var(--border); font-size: 0.85rem; font-weight: bold; }
-        .offline { background: #ffebeb; color: #d00; }
-        .online { background: #ebffeb; color: #080; }
-        
-        .container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            width: 100%;
-            max-width: 1200px;
-        }
-        .panel {
-            border: 2px solid var(--border);
-            background: #fff;
-            display: flex;
-            flex-direction: column;
-        }
-        .panel-header {
-            background: var(--border);
-            color: #fff;
-            padding: 8px 12px;
-            font-size: 0.9rem;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .panel-body { padding: 15px; }
-        
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 0.85rem; text-transform: uppercase; }
-        input[type="text"], input[type="file"], select {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-        }
-        
-        .canvas-container {
-            border: 1px solid var(--border);
-            background: #fff;
-            margin-bottom: 10px;
-            cursor: crosshair;
-        }
-        .toolbar { display: flex; gap: 10px; margin-bottom: 15px; }
-        button {
-            padding: 8px 15px;
-            border: 1px solid var(--border);
-            background: var(--accent);
-            color: var(--text);
-            cursor: pointer;
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-        }
-        button:hover { background: #ddd; }
-        button.primary { background: var(--btn-bg); color: var(--btn-text); width: 100%; font-size: 1rem; padding: 12px; }
-        button.primary:hover { background: var(--btn-hover); }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sketch2Shape AI — Turn a 2D sketch into a 3D mesh</title>
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.3.0/model-viewer.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f0d0c;
+      --panel: #171412;
+      --panel-alt: #1f1b18;
+      --border: #2c2623;
+      --text: #f3efec;
+      --muted: #9a9088;
+      --accent: #e56b38;
+      --accent-hover: #f27b49;
+      --green: #38c976;
+      --red: #e05252;
+    }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-size: 13px; }
 
-        .output-grid {
-            display: grid;
-            grid-template-rows: auto 1fr;
-            gap: 15px;
-            height: 100%;
-        }
-        .image-box {
-            border: 1px solid var(--border);
-            background: var(--bg);
-            height: 200px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-        .image-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
-        model-viewer {
-            width: 100%;
-            height: 350px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-        }
-        .hidden-url { font-size: 0.7rem; width: 100%; border: none; border-bottom: 1px dashed #ccc; margin-bottom: 15px; background: transparent;}
-    </style>
+    /* Top Header */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 24px; border-bottom: 1px solid var(--border); background: #13100e;
+      flex-wrap: wrap; gap: 12px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-icon {
+      width: 28px; height: 28px; border-radius: 6px; background: var(--accent);
+      display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff;
+    }
+    .brand h1 { margin: 0; font-size: 15px; font-weight: 700; }
+    .brand p { margin: 0; font-size: 11px; color: var(--muted); }
+
+    .conn-bar { display: flex; align-items: center; gap: 8px; }
+    .conn-bar input {
+      width: 300px; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--panel-alt); color: var(--text); font-size: 12px;
+    }
+    .btn {
+      padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--panel-alt); color: var(--text); cursor: pointer; font-size: 12px; font-weight: 600;
+    }
+    .btn:hover { border-color: #4a403b; background: #28231f; }
+    .btn-primary {
+      background: var(--accent); border-color: var(--accent); color: #fff;
+      width: 100%; padding: 11px; font-size: 13px; font-weight: 700; margin-top: 10px;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--border); background: var(--panel-alt);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+    .online .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+    /* Main Workspace Grid */
+    .workspace {
+      max-width: 1360px; margin: 18px auto; padding: 0 20px;
+      display: grid; grid-template-columns: 360px 1fr; gap: 18px;
+    }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden; margin-bottom: 16px;
+    }
+    .card-header {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-size: 11px; font-weight: 700; letter-spacing: 0.6px; color: var(--muted);
+      text-transform: uppercase; display: flex; justify-content: space-between; align-items: center;
+    }
+    .card-body { padding: 14px; }
+
+    /* Mode Tabs (Draw / Upload) */
+    .tab-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+      background: var(--bg); padding: 4px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 12px;
+    }
+    .tab-btn {
+      padding: 6px; text-align: center; border-radius: 4px; cursor: pointer;
+      font-size: 12px; font-weight: 600; color: var(--muted); border: none; background: transparent;
+    }
+    .tab-btn.active { background: var(--accent); color: #fff; }
+
+    .dropzone {
+      border: 1px dashed #3e3632; border-radius: 6px; padding: 14px;
+      text-align: center; color: var(--muted); cursor: pointer; margin-bottom: 12px;
+      background: var(--panel-alt);
+    }
+    .dropzone:hover { border-color: var(--accent); }
+    .canvas-box {
+      background: #ffffff; border-radius: 6px; overflow: hidden;
+      border: 1px solid var(--border); position: relative;
+    }
+    canvas#sketch-pad { width: 100%; height: auto; display: block; cursor: crosshair; }
+    .canvas-tools { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+
+    /* Form Controls */
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
+    .field input[type="text"], .field select {
+      width: 100%; padding: 8px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--panel-alt); color: var(--text); font-size: 12px;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .hint { font-size: 11px; color: var(--muted); line-height: 1.4; margin-bottom: 10px; }
+
+    /* Right Output Area */
+    .viewer-wrap {
+      position: relative; background: radial-gradient(circle at center, #221d1a 0%, #120f0e 100%);
+      height: 450px; border-bottom: 1px solid var(--border);
+    }
+    model-viewer { width: 100%; height: 100%; --poster-color: transparent; }
+    .viewer-toolbar {
+      position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; z-index: 10;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; padding: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-box {
+      background: var(--panel-alt); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px 10px;
+    }
+    .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-val { font-size: 13px; font-weight: 700; margin-top: 4px; color: var(--text); }
+
+    .dl-bar {
+      padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border);
+    }
+    .warn-banner {
+      margin: 0 14px 12px; padding: 8px 12px; border-radius: 6px;
+      background: rgba(229, 107, 56, 0.12); border: 1px solid rgba(229, 107, 56, 0.35);
+      color: #f0a884; font-size: 11px;
+    }
+
+    /* Diagnostic Panels (What the AI reads / 6 Views / Carve) */
+    .diag-grid {
+      display: grid; grid-template-columns: 240px 1fr; gap: 14px; padding: 14px;
+    }
+    .diag-card {
+      background: var(--panel-alt); border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+    }
+    .diag-card h4 { margin: 0 0 8px 0; font-size: 11px; color: var(--muted); text-transform: uppercase; }
+    .diag-card img { width: 100%; border-radius: 4px; border: 1px solid var(--border); background: #0f0d0c; }
+  </style>
 </head>
 <body>
 
-    <div class="header">
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-icon">S</div>
+      <div>
         <h1>Sketch2Shape AI</h1>
-        <div id="status-badge" class="status offline">BACKEND OFFLINE</div>
+        <p>Turn a 2D sketch into a 3D mesh</p>
+      </div>
     </div>
 
-    <div class="container">
-        <!-- INPUT PANEL -->
-        <div class="panel">
-            <div class="panel-header">1. Input Configuration</div>
-            <div class="panel-body">
-                <input type="text" id="backend-url" class="hidden-url" placeholder="Optional override: https://...trycloudflare.com">
-                
-                <div class="form-group">
-                    <label>Draw Sketch</label>
-                    <div class="canvas-container">
-                        <canvas id="sketch-pad" width="400" height="400" style="width:100%; height:auto; display:block;"></canvas>
-                    </div>
-                    <div class="toolbar">
-                        <button onclick="setTool('brush')">Brush</button>
-                        <button onclick="setTool('eraser')">Eraser</button>
-                        <button onclick="clearCanvas()">Clear</button>
-                    </div>
-                </div>
+    <div class="conn-bar">
+      <input type="text" id="backend-url" placeholder="Paste https://....trycloudflare.com" />
+      <button class="btn" onclick="saveBackend()">Save & Connect</button>
+      <div id="status-pill" class="status-pill">
+        <span class="dot"></span>
+        <span id="status-text">Offline</span>
+      </div>
+    </div>
+  </div>
 
-                <div class="form-group">
-                    <label>Or Upload File (Overrides Drawing)</label>
-                    <input type="file" id="upload" accept="image/png, image/jpeg, image/webp">
-                </div>
+  <!-- WORKSPACE -->
+  <div class="workspace">
+    <!-- LEFT COLUMN: INPUT & OPTIONS -->
+    <div>
+      <div class="card">
+        <div class="card-header">1 · YOUR SKETCH</div>
+        <div class="card-body">
+          <div class="tab-row">
+            <button id="tab-draw" class="tab-btn" onclick="switchInputTab('draw')">✎ Draw</button>
+            <button id="tab-upload" class="tab-btn active" onclick="switchInputTab('upload')">⬆ Upload</button>
+          </div>
 
-                <div class="form-group">
-                    <label>Optional Text Prompt</label>
-                    <input type="text" id="prompt" placeholder="e.g. a red ceramic mug">
-                </div>
+          <div id="upload-pane">
+            <label class="dropzone" for="file-input">
+              <div style="font-size:16px; margin-bottom:4px;">⬆</div>
+              <div style="color:var(--text); font-weight:600;">Click to choose or drop an image here</div>
+              <div style="font-size:11px; margin-top:2px;">PNG, JPG, JPEG or WEBP · up to 10 MB</div>
+            </label>
+            <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleFileUpload(event)" />
+          </div>
 
-                <div class="form-group">
-                    <label>Reconstruction Model</label>
-                    <select id="model-select">
-                        <option value="triposr">TripoSR (Fast)</option>
-                        <option value="sf3d">SF3D (High Fidelity)</option>
-                    </select>
-                </div>
+          <div class="canvas-box">
+            <canvas id="sketch-pad" width="512" height="512"></canvas>
+          </div>
 
-                <button class="primary" id="generate-btn" onclick="generate3D()">Generate 3D Model</button>
-            </div>
+          <div class="canvas-tools">
+            <button class="btn" onclick="setTool('brush')">Brush</button>
+            <button class="btn" onclick="setTool('eraser')">Eraser</button>
+            <input type="range" id="brush-size" min="2" max="24" value="6" style="flex:1" />
+            <button class="btn" onclick="clearCanvas()">Reset</button>
+          </div>
         </div>
+      </div>
 
-        <!-- OUTPUT PANEL -->
-        <div class="panel">
-            <div class="panel-header">2. Pipeline Results</div>
-            <div class="panel-body output-grid">
-                
-                <div>
-                    <label>Parsed Outline (What the AI sees)</label>
-                    <div class="image-box">
-                        <img id="outline-img" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Waiting for outline...">
-                    </div>
-                </div>
+      <div class="card">
+        <div class="card-header">2 · OPTIONS</div>
+        <div class="card-body">
+          <div class="field">
+            <label>Describe the object (optional)</label>
+            <input type="text" id="prompt" placeholder="e.g. a small wooden house or red ceramic mug" />
+          </div>
+          <div class="hint">
+            <b>AI + 3D</b> uses ControlNet Scribble + TripoSR/SF3D. <b>Line sketch</b> feeds your shaded drawing directly into TripoSR.
+          </div>
 
-                <div>
-                    <label>3D Output</label>
-                    <model-viewer id="viewer" camera-controls auto-rotate shadow-intensity="1"></model-viewer>
-                </div>
-
+          <div class="grid-2">
+            <div class="field">
+              <label>Input type</label>
+              <select id="mode-select">
+                <option value="sketch" selected>Line sketch (drawn)</option>
+                <option value="ai">AI Refined + 3D (Prompt)</option>
+                <option value="inflate">2.5D Inflate (Fast CPU)</option>
+              </select>
             </div>
+            <div class="field">
+              <label>Mesh detail & Engine</label>
+              <select id="model-select">
+                <option value="triposr:192" selected>Balanced (192 · TripoSR)</option>
+                <option value="triposr:256">High (256 · TripoSR)</option>
+                <option value="sf3d:192">SF3D (High Fidelity GPU)</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="gen-btn" class="btn btn-primary" onclick="generate3D()">Generate 3D Model</button>
         </div>
+      </div>
     </div>
 
-    <script>
-        // Backend Resolution
-        async function getBackend() {
-            const urlParams = new URLSearchParams(window.location.search);
-            if(urlParams.has('backend')) return urlParams.get('backend');
-            if(document.getElementById('backend-url').value) return document.getElementById('backend-url').value;
-            try {
-                let res = await fetch('./backend.json');
-                let data = await res.json();
-                return data.url;
-            } catch { return null; }
+    <!-- RIGHT COLUMN: 3D VIEWER, METRICS, SILHOUETTES -->
+    <div>
+      <div class="card">
+        <div class="viewer-wrap">
+          <div class="viewer-toolbar">
+            <button class="btn" onclick="resetCamera()">Reset view</button>
+            <button class="btn" onclick="toggleRotate()">Auto-rotate</button>
+            <button class="btn" onclick="flipModel()">Flip</button>
+          </div>
+          <model-viewer id="viewer" camera-controls auto-rotate shadow-intensity="1" environment-image="neutral"></model-viewer>
+        </div>
+
+        <!-- 8-CARD STATS ROW -->
+        <div class="stats-grid">
+          <div class="stat-box"><div class="stat-label">TOTAL TIME</div><div class="stat-val" id="st-total">—</div></div>
+          <div class="stat-box"><div class="stat-label">MESH TIME</div><div class="stat-val" id="st-mesh">—</div></div>
+          <div class="stat-box"><div class="stat-label">VERTICES</div><div class="stat-val" id="st-verts">—</div></div>
+          <div class="stat-box"><div class="stat-label">FACES</div><div class="stat-val" id="st-faces">—</div></div>
+          <div class="stat-box"><div class="stat-label">SIZE (X×Y×Z)</div><div class="stat-val" id="st-bbox">—</div></div>
+          <div class="stat-box"><div class="stat-label">WATERTIGHT</div><div class="stat-val" id="st-water">—</div></div>
+          <div class="stat-box"><div class="stat-label">GLB FILE</div><div class="stat-val" id="st-glb">—</div></div>
+          <div class="stat-box"><div class="stat-label">OBJ FILE</div><div class="stat-val" id="st-obj">—</div></div>
+          <div class="stat-box"><div class="stat-label">FRONT IoU</div><div class="stat-val" id="st-iou">—</div></div>
+          <div class="stat-box" style="grid-column: span 3;"><div class="stat-label">ENGINE USED</div><div class="stat-val" id="st-engine">—</div></div>
+        </div>
+
+        <div class="dl-bar">
+          <div style="display:flex; gap:8px;">
+            <a id="dl-glb" class="btn" href="#" download="model.glb">⬇ Download GLB</a>
+            <a id="dl-obj" class="btn" href="#" download="model.obj">⬇ Download OBJ</a>
+          </div>
+          <span style="font-size:11px; color:var(--muted);">Mesh is validated with Trimesh reload check.</span>
+        </div>
+
+        <div class="warn-banner">
+          Only the front view is directly observed from your sketch; the other 5 orthographic views are AI predictions.
+        </div>
+
+        <!-- SILHOUETTE & 6-VIEW DIAGNOSTICS -->
+        <div class="diag-grid">
+          <div class="diag-card">
+            <h4>What the AI reads (Silhouette + Strokes)</h4>
+            <img id="img-overlay" alt="Overlay preview" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
+            <div style="margin-top:8px; font-size:11px; color:var(--muted);">Green = strokes · Blue/Gold = filled silhouette</div>
+          </div>
+
+          <div class="diag-card">
+            <h4>Six Orthographic Silhouette Views (Front IoU + 5 Predicted Views)</h4>
+            <img id="img-montage" alt="6-view montage" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let savedBackend = "";
+    let currentJobId = null;
+
+    // 1. Resolve Backend URL (?backend=, localStorage, or backend.json)
+    async function initBackend() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("backend")) {
+        savedBackend = params.get("backend").replace(/\/$/, "");
+        localStorage.setItem("s2s_backend", savedBackend);
+      } else if (localStorage.getItem("s2s_backend")) {
+        savedBackend = localStorage.getItem("s2s_backend");
+      } else {
+        try {
+          const r = await fetch("./backend.json");
+          const d = await r.json();
+          if (d.url) savedBackend = d.url.replace(/\/$/, "");
+        } catch {}
+      }
+      if (savedBackend) {
+        document.getElementById("backend-url").value = savedBackend;
+        checkHealth();
+      }
+    }
+
+    function saveBackend() {
+      const val = document.getElementById("backend-url").value.trim().replace(/\/$/, "");
+      if (!val) return alert("Paste your https://....trycloudflare.com URL first");
+      savedBackend = val;
+      localStorage.setItem("s2s_backend", savedBackend);
+      checkHealth();
+    }
+
+    async function checkHealth() {
+      const pill = document.getElementById("status-pill");
+      const text = document.getElementById("status-text");
+      if (!savedBackend) return;
+      try {
+        const res = await fetch(savedBackend + "/health");
+        const data = await res.json();
+        if (res.ok) {
+          pill.className = "status-pill online";
+          text.textContent = `Online · ${data.gpu_name || data.device}`;
+          return;
         }
+      } catch {}
+      pill.className = "status-pill";
+      text.textContent = "Offline";
+    }
 
-        // Status Checker
-        async function checkStatus() {
-            const backend = await getBackend();
-            const badge = document.getElementById('status-badge');
-            if (!backend) return;
-            try {
-                let res = await fetch(backend + "/health");
-                if(res.ok) {
-                    badge.textContent = "BACKEND ONLINE";
-                    badge.className = "status online";
-                }
-            } catch {
-                badge.textContent = "BACKEND OFFLINE";
-                badge.className = "status offline";
-            }
-        }
-        checkStatus();
+    // 2. Canvas & File Upload Handling
+    const canvas = document.getElementById("sketch-pad");
+    const ctx = canvas.getContext("2d");
+    let drawing = false;
+    let tool = "brush";
 
-        // Canvas Logic
-        const canvas = document.getElementById('sketch-pad');
-        const ctx = canvas.getContext('2d');
-        let isDrawing = false;
-        let currentTool = 'brush';
+    function clearCanvas() {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    clearCanvas();
 
-        // Fill background white initially
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * (canvas.width / rect.width),
+        y: (clientY - rect.top) * (canvas.height / rect.height)
+      };
+    }
 
-        canvas.addEventListener('mousedown', startDrawing);
-        canvas.addEventListener('mousemove', draw);
-        canvas.addEventListener('mouseup', stopDrawing);
-        canvas.addEventListener('mouseout', stopDrawing);
+    canvas.addEventListener("mousedown", (e) => { drawing = true; draw(e); });
+    canvas.addEventListener("mousemove", draw);
+    window.addEventListener("mouseup", () => { drawing = false; ctx.beginPath(); });
 
-        function getMousePos(e) {
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            return {
-                x: (e.clientX - rect.left) * scaleX,
-                y: (e.clientY - rect.top) * scaleY
-            };
-        }
+    function draw(e) {
+      if (!drawing) return;
+      const pos = getPos(e);
+      const size = document.getElementById("brush-size").value;
+      ctx.lineWidth = tool === "eraser" ? size * 2.5 : size;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = tool === "eraser" ? "#ffffff" : "#000000";
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    }
 
-        function startDrawing(e) {
-            isDrawing = true;
-            draw(e);
-        }
+    function setTool(t) { tool = t; }
 
-        function draw(e) {
-            if (!isDrawing) return;
-            const pos = getMousePos(e);
-            ctx.lineWidth = currentTool === 'eraser' ? 20 : 5;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = currentTool === 'eraser' ? '#ffffff' : '#000000';
+    function switchInputTab(tab) {
+      document.getElementById("tab-draw").classList.toggle("active", tab === "draw");
+      document.getElementById("tab-upload").classList.toggle("active", tab === "upload");
+      document.getElementById("upload-pane").style.display = tab === "upload" ? "block" : "none";
+    }
 
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y);
-        }
+    function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        clearCanvas();
+        const scale = Math.min(canvas.width / img.width, canvas.height / img.height) * 0.9;
+        const w = img.width * scale, h = img.height * scale;
+        ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+      };
+      img.src = URL.createObjectURL(file);
+    }
 
-        function stopDrawing() {
-            isDrawing = false;
-            ctx.beginPath();
-        }
+    // 3. Viewer Controls
+    const viewer = document.getElementById("viewer");
+    function resetCamera() { viewer.cameraOrbit = "0deg 75deg 105%"; }
+    function toggleRotate() { viewer.autoRotate = !viewer.autoRotate; }
+    let flipped = false;
+    function flipModel() {
+      flipped = !flipped;
+      viewer.orientation = flipped ? "0deg 180deg 180deg" : "0deg 0deg 0deg";
+    }
 
-        function setTool(tool) { currentTool = tool; }
-        function clearCanvas() {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
+    // 4. Generate 3D Model
+    async function generate3D() {
+      if (!savedBackend) return alert("Please paste your Cloudflare backend URL and click Save & Connect.");
+      const btn = document.getElementById("gen-btn");
+      btn.disabled = true;
+      btn.textContent = "Generating 3D Mesh on GPU...";
 
-        // Generate Pipeline
-        async function generate3D() {
-            const backend = await getBackend();
-            if (!backend) {
-                alert("No backend URL found.");
-                return;
-            }
+      try {
+        const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+        const [engine, res] = document.getElementById("model-select").value.split(":");
 
-            const btn = document.getElementById('generate-btn');
-            btn.textContent = "Processing...";
-            btn.disabled = true;
+        const fd = new FormData();
+        fd.append("sketch", blob, "sketch.png");
+        fd.append("prompt", document.getElementById("prompt").value);
+        fd.append("mode", document.getElementById("mode-select").value);
+        fd.append("model", engine);
+        fd.append("resolution", res);
 
-            try {
-                let formData = new FormData();
-                formData.append("prompt", document.getElementById('prompt').value);
-                formData.append("model", document.getElementById('model-select').value);
-                formData.append("mode", "ai");
+        const resp = await fetch(savedBackend + "/generate", { method: "POST", body: fd });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || "Server error");
 
-                const fileInput = document.getElementById('upload');
-                if (fileInput.files.length > 0) {
-                    formData.append("sketch", fileInput.files[0]);
-                } else {
-                    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-                    formData.append("sketch", blob, "sketch.png");
-                }
+        currentJobId = data.job_id;
+        viewer.src = savedBackend + data.glb_url;
+        document.getElementById("dl-glb").href = savedBackend + data.glb_url;
+        document.getElementById("dl-obj").href = savedBackend + data.obj_url;
 
-                let res = await fetch(backend + "/generate", { method: "POST", body: formData });
-                let data = await res.json();
-                
-                // Expecting backend to return glb_url and outline_url in the future
-                if(data.glb_url) {
-                    document.getElementById('viewer').src = backend + data.glb_url;
-                }
-                if(data.outline_url) {
-                    document.getElementById('outline-img').src = backend + data.outline_url;
-                } else if (data.montage_url) {
-                    // Fallback to montage if outline isn't available yet from your current api.py
-                    document.getElementById('outline-img').src = backend + data.montage_url;
-                }
+        document.getElementById("img-overlay").src = savedBackend + data.overlay_url;
+        document.getElementById("img-montage").src = savedBackend + data.montage_url;
 
-            } catch (err) {
-                alert("Generation failed: " + err.message);
-            } finally {
-                btn.textContent = "Generate 3D Model";
-                btn.disabled = false;
-            }
-        }
-    </script>
+        const s = data.stats || {};
+        document.getElementById("st-total").textContent = s.total_time || "—";
+        document.getElementById("st-mesh").textContent = s.mesh_time || "—";
+        document.getElementById("st-verts").textContent = s.vertices || "—";
+        document.getElementById("st-faces").textContent = s.faces || "—";
+        document.getElementById("st-bbox").textContent = s.bbox || "—";
+        document.getElementById("st-water").textContent = s.watertight || "—";
+        document.getElementById("st-glb").textContent = s.glb_size || "—";
+        document.getElementById("st-obj").textContent = s.obj_size || "—";
+        document.getElementById("st-iou").textContent = s.front_iou !== undefined ? s.front_iou : "—";
+        document.getElementById("st-engine").textContent = s.backend_used || "—";
+      } catch (err) {
+        alert("Generation error: " + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Generate 3D Model";
+      }
+    }
+
+    initBackend();
+  </script>
 </body>
 </html>
