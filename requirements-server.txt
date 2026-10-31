@@ -3,9 +3,6 @@ uvicorn
 python-multipart
 trimesh
 opencv-python-headless
-numpy
-scikit-image
-pillow
 rembg
 onnxruntime
 diffusers
