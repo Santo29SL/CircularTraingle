@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Sketch2Shape AI</title>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.1.1/model-viewer.min.js"></script>
+</head>
+<body>
+    <h1>Sketch2Shape AI</h1>
+    <div id="status-badge" style="color: red;">Backend Offline</div>
+    
+    <input type="text" id="backend-url" placeholder="Backend URL (trycloudflare.com)">
+    <input type="file" id="upload">
+    <button onclick="generate3D()">Generate 3D</button>
+
+    <model-viewer id="viewer" camera-controls auto-rotate style="width:400px; height:400px;"></model-viewer>
+
+    <script>
+        async function getBackend() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if(urlParams.has('backend')) return urlParams.get('backend');
+            if(document.getElementById('backend-url').value) return document.getElementById('backend-url').value;
+            
+            try {
+                let res = await fetch('./backend.json');
+                let data = await res.json();
+                return data.url;
+            } catch {
+                return null;
+            }
+        }
+
+        async function generate3D() {
+            let backend = await getBackend();
+            let file = document.getElementById('upload').files[0];
+            
+            let formData = new FormData();
+            formData.append("sketch", file);
+            formData.append("mode", "ai");
+
+            let res = await fetch(backend + "/generate", { method: "POST", body: formData });
+            let data = await res.json();
+            
+            document.getElementById('viewer').src = backend + data.glb_url;
+        }
+    </script>
+</body>
+</html>
