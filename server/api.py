@@ -7,13 +7,14 @@ import cv2
 import numpy as np
 import torch
 import trimesh
+from PIL import Image
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from pipeline.preprocess import extract_silhouette_and_overlay, make_shaded_rgba
-from pipeline.inflate import mesh_by_inflation, finalize_mesh
+from pipeline.inflate import mesh_by_inflation
 from pipeline.views import render_six_views_and_iou, carve_mesh_with_side_silhouette
 
 app = FastAPI(title="Sketch2Shape AI Backend")
@@ -39,6 +40,23 @@ def get_gpu_info():
     return "cpu", "CPU"
 
 
+def make_color_rgba(input_path: str, mask: np.ndarray) -> Image.Image:
+    """Preserves original RGB colors for uploaded photos/shaded drawings at 512x512."""
+    img = Image.open(input_path).convert("RGB")
+    w, h = img.size
+    scale = 440.0 / max(h, w)
+    nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+    resized = img.resize((nw, nh), Image.Resampling.LANCZOS)
+
+    canvas = Image.new("RGB", (512, 512), (255, 255, 255))
+    x0, y0 = (512 - nw) // 2, (512 - nh) // 2
+    canvas.paste(resized, (x0, y0))
+
+    rgb_arr = np.array(canvas)
+    rgba_arr = np.dstack([rgb_arr, mask])
+    return Image.fromarray(rgba_arr, mode="RGBA")
+
+
 @app.get("/health")
 @app.get("/ping")
 def health_check():
@@ -49,22 +67,16 @@ def health_check():
 @app.post("/warmup")
 async def warmup():
     device, gpu_name = get_gpu_info()
-    loaded = []
-    if device == "cuda":
-        try:
-            from pipeline.reconstruct_3d import load_triposr
-            load_triposr()
-            loaded.append("TripoSR")
-        except Exception as e:
-            loaded.append(f"TripoSR_err: {e}")
-    return {"status": "warmed", "device": device, "gpu_name": gpu_name, "loaded": loaded}
+    from pipeline.reconstruct_3d import load_triposr
+    load_triposr()
+    return {"status": "warmed", "device": device, "gpu_name": gpu_name, "loaded": ["TripoSR"]}
 
 
 @app.post("/generate")
 async def generate(
     sketch: UploadFile = File(...),
     prompt: str = Form(""),
-    mode: str = Form("ai"),          # "ai", "sketch", "inflate"
+    mode: str = Form("sketch"),      # "sketch", "color", "ai", "inflate"
     model: str = Form("triposr"),    # "triposr" or "sf3d"
     resolution: int = Form(192),     # 128, 192, 256
     seed: int = Form(42),
@@ -80,14 +92,19 @@ async def generate(
             shutil.copyfileobj(sketch.file, buffer)
 
         try:
-            # 1. Read sketch -> Silhouette + Overlay ("What the AI reads")
+            # 1. Extract silhouette & visual overlay
             gray, mask, strokes, overlay_bgr = extract_silhouette_and_overlay(input_path)
             overlay_path = f"{job_dir}/overlay.png"
             mask_path = f"{job_dir}/mask.png"
             cv2.imwrite(overlay_path, overlay_bgr)
             cv2.imwrite(mask_path, mask)
 
-            rgba_for_3d = make_shaded_rgba(gray, mask, strokes)
+            # Prepare RGBA input based on mode
+            if mode == "color":
+                rgba_for_3d = make_color_rgba(input_path, mask)
+            else:
+                rgba_for_3d = make_shaded_rgba(gray, mask, strokes)
+
             ai_img_url = None
             outline_url = f"/{mask_path}"
             refinement_iou = 1.0
@@ -95,37 +112,28 @@ async def generate(
             # 2. Optional AI Refinement stage (SD 1.5 + ControlNet Scribble + LCM-LoRA + rembg)
             device, _ = get_gpu_info()
             if mode == "ai" and device == "cuda":
-                try:
-                    from pipeline.refine_sd import refine_sketch_with_ai
-                    ai_rgba, ai_outline, r_iou = refine_sketch_with_ai(strokes, mask, prompt, base_seed=seed)
-                    refinement_iou = round(r_iou, 3)
+                from pipeline.refine_sd import refine_sketch_with_ai
+                ai_rgba, ai_outline, r_iou = refine_sketch_with_ai(strokes, mask, prompt, base_seed=seed)
+                refinement_iou = round(r_iou, 3)
 
-                    ai_img_path = f"{job_dir}/ai_refined.png"
-                    ai_outline_path = f"{job_dir}/ai_outline.png"
-                    ai_rgba.save(ai_img_path)
-                    cv2.imwrite(ai_outline_path, ai_outline)
+                ai_img_path = f"{job_dir}/ai_refined.png"
+                ai_outline_path = f"{job_dir}/ai_outline.png"
+                ai_rgba.save(ai_img_path)
+                cv2.imwrite(ai_outline_path, ai_outline)
 
-                    ai_img_url = f"/{ai_img_path}"
-                    outline_url = f"/{ai_outline_path}"
+                ai_img_url = f"/{ai_img_path}"
+                outline_url = f"/{ai_outline_path}"
+                if r_iou >= 0.35:
+                    rgba_for_3d = ai_rgba
 
-                    # Only use AI image if IoU >= 0.40; otherwise keep faithful sketch shaded RGBA
-                    if r_iou >= 0.40:
-                        rgba_for_3d = ai_rgba
-                except Exception as e:
-                    print(f"[WARN] AI stage fallback to sketch mode: {e}")
-
-            # 3. 3D Reconstruction (TripoSR / SF3D on GPU, or 2.5D inflation fallback)
+            # 3. 3D Reconstruction on GPU (TripoSR / SF3D)
             t_mesh0 = time.time()
-            backend_used = "2.5D Inflation (CPU)"
-            if mode != "inflate":
-                try:
-                    from pipeline.reconstruct_3d import reconstruct_mesh
-                    mesh, backend_used = reconstruct_mesh(rgba_for_3d, backend=model, resolution=resolution)
-                except Exception as e:
-                    print(f"[WARN] 3D model fallback to inflation ({e})")
-                    mesh = mesh_by_inflation(mask, resolution=min(resolution, 160))
-            else:
+            if mode == "inflate":
                 mesh = mesh_by_inflation(mask, resolution=min(resolution, 160))
+                backend_used = "2.5D Inflation (CPU)"
+            else:
+                from pipeline.reconstruct_3d import reconstruct_mesh
+                mesh, backend_used = reconstruct_mesh(rgba_for_3d, backend=model, resolution=resolution)
             mesh_time = round(time.time() - t_mesh0, 2)
 
             # 4. Export .glb and .obj + reload validation
@@ -134,7 +142,6 @@ async def generate(
             mesh.export(glb_path)
             mesh.export(obj_path)
 
-            # Reload validation test
             reloaded = trimesh.load(glb_path, force="mesh")
             extents = np.round(reloaded.extents, 2).tolist() if len(reloaded.vertices) else [0, 0, 0]
 
@@ -173,44 +180,3 @@ async def generate(
             import traceback
             traceback.print_exc()
             return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.post("/carve")
-async def carve_endpoint(
-    job_id: str = Form(...),
-    side: str = Form("right"),
-    sketch: UploadFile = File(...),
-):
-    async with GPU_LOCK:
-        job_dir = f"outputs/{job_id}"
-        glb_path = f"{job_dir}/model.glb"
-        mask_path = f"{job_dir}/mask.png"
-        if not os.path.exists(glb_path):
-            return JSONResponse({"error": "Job ID not found"}, status_code=404)
-
-        side_input = f"{job_dir}/side_input.png"
-        with open(side_input, "wb") as buffer:
-            shutil.copyfileobj(sketch.file, buffer)
-
-        _, side_mask, _, _ = extract_silhouette_and_overlay(side_input)
-        mesh = trimesh.load(glb_path, force="mesh")
-        carved = carve_mesh_with_side_silhouette(mesh, side_mask, view_side=side)
-
-        carved_glb = f"{job_dir}/model_carved.glb"
-        carved_obj = f"{job_dir}/model_carved.obj"
-        carved.export(carved_glb)
-        carved.export(carved_obj)
-
-        orig_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-        montage_path = f"{job_dir}/views_carved.png"
-        front_iou = render_six_views_and_iou(carved, orig_mask, montage_path)
-
-        return JSONResponse({
-            "job_id": job_id,
-            "glb_url": f"/{carved_glb}?t={int(time.time())}",
-            "obj_url": f"/{carved_obj}?t={int(time.time())}",
-            "montage_url": f"/{montage_path}?t={int(time.time())}",
-            "front_iou": round(front_iou, 3),
-            "vertices": f"{len(carved.vertices):,}",
-            "faces": f"{len(carved.faces):,}",
-        })

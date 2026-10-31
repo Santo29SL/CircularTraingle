@@ -224,9 +224,10 @@
             <div class="field">
               <label>Input type</label>
               <select id="mode-select">
-                <option value="sketch" selected>Line sketch (drawn)</option>
-                <option value="ai">AI Refined + 3D (Prompt)</option>
-                <option value="inflate">2.5D Inflate (Fast CPU)</option>
+                <option value="sketch">Line sketch (drawn)</option>
+                <option value="color" selected>Color image / photo (Direct GPU 3D)</option>
+                <option value="ai">AI Refined + 3D (Sketch + Prompt)</option>
+                <option value="inflate">2.5D Inflate (Fast CPU Fallback)</option>
               </select>
             </div>
             <div class="field">
@@ -399,6 +400,7 @@
     function handleFileUpload(e) {
       const file = e.target.files[0];
       if (!file) return;
+      document.getElementById("mode-select").value = "color";
       const img = new Image();
       img.onload = () => {
         clearCanvas();
