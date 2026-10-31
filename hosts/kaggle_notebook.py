@@ -1,23 +1,66 @@
-# Run this in Kaggle when the ML pipeline is finished locally
-!git clone https://github.com/Santo29SL/CircularTraingle.git -b itr2
-%cd CircularTraingle
-!pip install -r requirements-server.txt
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+import os
+import uuid
+import shutil
+import cv2
 
-import subprocess
-import time
-import pexpect
+from pipeline.preprocess import extract_silhouette
+from pipeline.inflate import mesh_by_inflation
 
-subprocess.Popen(["uvicorn", "server.api:app", "--host", "0.0.0.0", "--port", "8000"])
-time.sleep(5)
+app = FastAPI()
 
-!wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared
-!chmod +x cloudflared
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-child = pexpect.spawn('./cloudflared tunnel --url http://127.0.0.1:8000', encoding='utf-8')
-while True:
-    line = child.readline()
-    if "trycloudflare.com" in line:
-        url = "https://" + line.split("https://")[1].split()[0]
-        print(f"\n✅ BACKEND READY!")
-        print(f"👉 CLICK HERE TO OPEN APP: https://huggingface.co/spaces/YOUR_NAME/Sketch2Shape?backend={url}\n")
-        break
+os.makedirs("outputs", exist_ok=True)
+app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "device": os.environ.get("S2S_DEVICE", "cpu")}
+
+@app.post("/generate")
+async def generate(
+    sketch: UploadFile = File(...), 
+    prompt: str = Form(""), 
+    mode: str = Form("ai"),
+    model: str = Form("sf3d") 
+):
+    job_id = str(uuid.uuid4())
+    job_dir = f"outputs/{job_id}"
+    os.makedirs(job_dir, exist_ok=True)
+    
+    input_path = f"{job_dir}/input.png"
+    with open(input_path, "wb") as buffer:
+        shutil.copyfileobj(sketch.file, buffer)
+        
+    try:
+        mask = extract_silhouette(input_path)
+        outline_path = f"{job_dir}/outline.png"
+        cv2.imwrite(outline_path, mask)
+        
+        # GPU Routing Logic
+        if model in ["sf3d", "triposr"] and os.environ.get("S2S_DEVICE") != "cpu":
+            # NOTE: Implement actual SF3D/TripoSR inference here in Kaggle Phase
+            pass 
+            
+        # Fallback to local CPU inflation if GPU is missing or while developing
+        mesh = mesh_by_inflation(mask)
+        glb_path = f"{job_dir}/model.glb"
+        mesh.export(glb_path)
+        
+        return JSONResponse({
+            "job_id": job_id,
+            "glb_url": f"/{glb_path}",
+            "outline_url": f"/{outline_path}",
+            "model_used": model
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)

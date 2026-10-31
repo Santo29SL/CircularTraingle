@@ -1,46 +1,327 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sketch2Shape AI</title>
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.1.1/model-viewer.min.js"></script>
+    <style>
+        :root {
+            --bg: #f9f9f9;
+            --text: #111;
+            --border: #000;
+            --accent: #eee;
+            --btn-bg: #000;
+            --btn-text: #fff;
+            --btn-hover: #333;
+        }
+        * {
+            box-sizing: border-box;
+            border-radius: 0 !important; /* Strictly sharp edges */
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .header {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        h1 { font-size: 1.5rem; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
+        .status { padding: 5px 10px; border: 1px solid var(--border); font-size: 0.85rem; font-weight: bold; }
+        .offline { background: #ffebeb; color: #d00; }
+        .online { background: #ebffeb; color: #080; }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+        .panel {
+            border: 2px solid var(--border);
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-header {
+            background: var(--border);
+            color: #fff;
+            padding: 8px 12px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .panel-body { padding: 15px; }
+        
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 0.85rem; text-transform: uppercase; }
+        input[type="text"], input[type="file"], select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+        }
+        
+        .canvas-container {
+            border: 1px solid var(--border);
+            background: #fff;
+            margin-bottom: 10px;
+            cursor: crosshair;
+        }
+        .toolbar { display: flex; gap: 10px; margin-bottom: 15px; }
+        button {
+            padding: 8px 15px;
+            border: 1px solid var(--border);
+            background: var(--accent);
+            color: var(--text);
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+        button:hover { background: #ddd; }
+        button.primary { background: var(--btn-bg); color: var(--btn-text); width: 100%; font-size: 1rem; padding: 12px; }
+        button.primary:hover { background: var(--btn-hover); }
+
+        .output-grid {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 15px;
+            height: 100%;
+        }
+        .image-box {
+            border: 1px solid var(--border);
+            background: var(--bg);
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .image-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        model-viewer {
+            width: 100%;
+            height: 350px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+        }
+        .hidden-url { font-size: 0.7rem; width: 100%; border: none; border-bottom: 1px dashed #ccc; margin-bottom: 15px; background: transparent;}
+    </style>
 </head>
 <body>
-    <h1>Sketch2Shape AI</h1>
-    <div id="status-badge" style="color: red;">Backend Offline</div>
-    
-    <input type="text" id="backend-url" placeholder="Backend URL (trycloudflare.com)">
-    <input type="file" id="upload">
-    <button onclick="generate3D()">Generate 3D</button>
 
-    <model-viewer id="viewer" camera-controls auto-rotate style="width:400px; height:400px;"></model-viewer>
+    <div class="header">
+        <h1>Sketch2Shape AI</h1>
+        <div id="status-badge" class="status offline">BACKEND OFFLINE</div>
+    </div>
+
+    <div class="container">
+        <!-- INPUT PANEL -->
+        <div class="panel">
+            <div class="panel-header">1. Input Configuration</div>
+            <div class="panel-body">
+                <input type="text" id="backend-url" class="hidden-url" placeholder="Optional override: https://...trycloudflare.com">
+                
+                <div class="form-group">
+                    <label>Draw Sketch</label>
+                    <div class="canvas-container">
+                        <canvas id="sketch-pad" width="400" height="400" style="width:100%; height:auto; display:block;"></canvas>
+                    </div>
+                    <div class="toolbar">
+                        <button onclick="setTool('brush')">Brush</button>
+                        <button onclick="setTool('eraser')">Eraser</button>
+                        <button onclick="clearCanvas()">Clear</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Or Upload File (Overrides Drawing)</label>
+                    <input type="file" id="upload" accept="image/png, image/jpeg, image/webp">
+                </div>
+
+                <div class="form-group">
+                    <label>Optional Text Prompt</label>
+                    <input type="text" id="prompt" placeholder="e.g. a red ceramic mug">
+                </div>
+
+                <div class="form-group">
+                    <label>Reconstruction Model</label>
+                    <select id="model-select">
+                        <option value="triposr">TripoSR (Fast)</option>
+                        <option value="sf3d">SF3D (High Fidelity)</option>
+                    </select>
+                </div>
+
+                <button class="primary" id="generate-btn" onclick="generate3D()">Generate 3D Model</button>
+            </div>
+        </div>
+
+        <!-- OUTPUT PANEL -->
+        <div class="panel">
+            <div class="panel-header">2. Pipeline Results</div>
+            <div class="panel-body output-grid">
+                
+                <div>
+                    <label>Parsed Outline (What the AI sees)</label>
+                    <div class="image-box">
+                        <img id="outline-img" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Waiting for outline...">
+                    </div>
+                </div>
+
+                <div>
+                    <label>3D Output</label>
+                    <model-viewer id="viewer" camera-controls auto-rotate shadow-intensity="1"></model-viewer>
+                </div>
+
+            </div>
+        </div>
+    </div>
 
     <script>
+        // Backend Resolution
         async function getBackend() {
             const urlParams = new URLSearchParams(window.location.search);
             if(urlParams.has('backend')) return urlParams.get('backend');
             if(document.getElementById('backend-url').value) return document.getElementById('backend-url').value;
-            
             try {
                 let res = await fetch('./backend.json');
                 let data = await res.json();
                 return data.url;
-            } catch {
-                return null;
-            }
+            } catch { return null; }
         }
 
-        async function generate3D() {
-            let backend = await getBackend();
-            let file = document.getElementById('upload').files[0];
-            
-            let formData = new FormData();
-            formData.append("sketch", file);
-            formData.append("mode", "ai");
+        // Status Checker
+        async function checkStatus() {
+            const backend = await getBackend();
+            const badge = document.getElementById('status-badge');
+            if (!backend) return;
+            try {
+                let res = await fetch(backend + "/health");
+                if(res.ok) {
+                    badge.textContent = "BACKEND ONLINE";
+                    badge.className = "status online";
+                }
+            } catch {
+                badge.textContent = "BACKEND OFFLINE";
+                badge.className = "status offline";
+            }
+        }
+        checkStatus();
 
-            let res = await fetch(backend + "/generate", { method: "POST", body: formData });
-            let data = await res.json();
-            
-            document.getElementById('viewer').src = backend + data.glb_url;
+        // Canvas Logic
+        const canvas = document.getElementById('sketch-pad');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+        let currentTool = 'brush';
+
+        // Fill background white initially
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            draw(e);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const pos = getMousePos(e);
+            ctx.lineWidth = currentTool === 'eraser' ? 20 : 5;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = currentTool === 'eraser' ? '#ffffff' : '#000000';
+
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            ctx.beginPath();
+        }
+
+        function setTool(tool) { currentTool = tool; }
+        function clearCanvas() {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Generate Pipeline
+        async function generate3D() {
+            const backend = await getBackend();
+            if (!backend) {
+                alert("No backend URL found.");
+                return;
+            }
+
+            const btn = document.getElementById('generate-btn');
+            btn.textContent = "Processing...";
+            btn.disabled = true;
+
+            try {
+                let formData = new FormData();
+                formData.append("prompt", document.getElementById('prompt').value);
+                formData.append("model", document.getElementById('model-select').value);
+                formData.append("mode", "ai");
+
+                const fileInput = document.getElementById('upload');
+                if (fileInput.files.length > 0) {
+                    formData.append("sketch", fileInput.files[0]);
+                } else {
+                    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                    formData.append("sketch", blob, "sketch.png");
+                }
+
+                let res = await fetch(backend + "/generate", { method: "POST", body: formData });
+                let data = await res.json();
+                
+                // Expecting backend to return glb_url and outline_url in the future
+                if(data.glb_url) {
+                    document.getElementById('viewer').src = backend + data.glb_url;
+                }
+                if(data.outline_url) {
+                    document.getElementById('outline-img').src = backend + data.outline_url;
+                } else if (data.montage_url) {
+                    // Fallback to montage if outline isn't available yet from your current api.py
+                    document.getElementById('outline-img').src = backend + data.montage_url;
+                }
+
+            } catch (err) {
+                alert("Generation failed: " + err.message);
+            } finally {
+                btn.textContent = "Generate 3D Model";
+                btn.disabled = false;
+            }
         }
     </script>
 </body>
